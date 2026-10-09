@@ -1,0 +1,808 @@
+<title>Radar de vuelos</title>
+<style>
+/* Layout: una sola columna para celular; cabecera, recorridos, lista de vuelos desplegables, ayuda. */
+:root {
+  --bg: #f3f5f6;
+  --card: #ffffff;
+  --line: #dde3e6;
+  --fg: #172226;
+  --muted: #66757b;
+  --accent: #0E7C86;
+  --accent-soft: #e2f1f2;
+  --up: #1d8a4a;
+  --down: #c63b3b;
+  --avg: #e07b16;
+  --chip: #eef2f3;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1517; --card: #172024; --line: #26343a; --fg: #e6eef0; --muted: #8fa1a7;
+    --accent: #3fb3bd; --accent-soft: #143338; --up: #4cc27c; --down: #f07272; --avg: #f29a42; --chip: #1e2a2f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1517; --card: #172024; --line: #26343a; --fg: #e6eef0; --muted: #8fa1a7;
+  --accent: #3fb3bd; --accent-soft: #143338; --up: #4cc27c; --down: #f07272; --avg: #f29a42; --chip: #1e2a2f;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 640px; margin: 0 auto; padding-inline: 16px; padding-block: 18px 40px; display: flex; flex-direction: column; gap: 22px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+button { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Cabecera */
+header { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+.titulos { min-width: 0; flex: 1 1 220px; }
+h1 { font-size: 24px; margin: 0; letter-spacing: -0.02em; text-wrap: balance; }
+.sub { margin: 4px 0 0; color: var(--muted); font-size: 13.5px; text-wrap: pretty; }
+.monedas { display: flex; gap: 6px; align-items: center; }
+.seg { display: inline-flex; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+.seg button { border: 0; background: transparent; padding: 6px 10px; border-radius: 7px; font-family: var(--mono); font-size: 13px; cursor: pointer; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.icono { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); display: grid; place-items: center; cursor: pointer; color: var(--accent); font-size: 18px; }
+.icono svg { width: 16px; height: 16px; }
+
+/* Secciones */
+section { display: flex; flex-direction: column; gap: 10px; }
+.sec-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.sec-titulo { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; margin: 0; }
+.btn { border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 10px; padding: 8px 13px; font-weight: 600; font-size: 14px; cursor: pointer; }
+.btn.sec { background: transparent; color: var(--accent); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
+.aviso { font-size: 13.5px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); color: var(--fg); display: flex; flex-direction: column; gap: 8px; }
+.aviso.error { background: color-mix(in srgb, var(--down) 13%, var(--card)); }
+.aviso .btn { align-self: flex-start; padding: 6px 11px; font-size: 13px; }
+.vacio { padding: 18px 16px; color: var(--muted); font-size: 14px; text-align: left; }
+.vacio b { color: var(--fg); }
+
+/* Recorridos */
+.rutas { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.ruta { padding: 11px 12px; display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; }
+.ruta > div { min-width: 0; }
+.ruta b { display: block; font-size: 15px; overflow-wrap: anywhere; }
+.ruta span { color: var(--muted); font-size: 12.5px; }
+.quitar { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 4px; border-radius: 6px; flex: none; }
+.quitar.confirmar { font-size: 12px; color: var(--down); border: 1px solid var(--down); padding: 4px 7px; }
+
+/* Vuelos */
+.meta { color: var(--muted); font-size: 13px; margin: 0; }
+.progreso { font-size: 13.5px; color: var(--accent); font-family: var(--mono); }
+.lista { display: flex; flex-direction: column; gap: 8px; }
+.vuelo { overflow: hidden; }
+.v-head { display: flex; flex-direction: column; gap: 8px; width: 100%; text-align: left; border: 0; background: transparent; padding: 13px 14px; cursor: pointer; }
+.v-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.v-left { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.v-left b { font-size: 15.5px; overflow-wrap: anywhere; }
+.v-left .gris { color: var(--muted); font-size: 13px; }
+.v-right { text-align: right; flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.precio { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 21px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
+.pp { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.cambio { font-family: var(--mono); font-size: 12px; font-weight: 600; white-space: nowrap; margin-top: 2px; }
+.sube { color: var(--up); }
+.baja { color: var(--down); }
+.igual { color: var(--muted); }
+.etiqueta { font-family: var(--sans); font-size: 11px; font-weight: 600; background: var(--accent-soft); color: var(--accent); padding: 2px 7px; border-radius: 999px; white-space: nowrap; margin-top: 3px; }
+.v-linea { font-size: 13px; color: var(--fg); text-wrap: pretty; }
+.v-linea .num { font-weight: 600; }
+.chev { color: var(--muted); font-size: 11px; display: inline-block; font-weight: 400; }
+.v-body { border-top: 1px solid var(--line); padding: 0 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+.maleta { margin: 0 -14px; padding: 10px 14px; background: var(--chip); display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: 13.5px; }
+.maleta label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 600; color: var(--accent); }
+.maleta input { width: 18px; height: 18px; accent-color: var(--accent); }
+.mini { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0; }
+.mini.c { color: var(--accent); }
+.grafica svg { width: 100%; height: auto; display: block; }
+.grafica .nota { font-size: 12px; color: var(--muted); }
+.datos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; margin: 0; }
+.datos div { min-width: 0; }
+.datos dt { font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--accent); margin-bottom: 2px; }
+.datos dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.datos dd small { display: block; color: var(--muted); font-size: 12px; }
+.tramos { display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+.tramo { display: flex; gap: 10px; }
+.tramo .num:first-child { font-weight: 700; min-width: 64px; }
+.tabla-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th { text-align: left; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 4px 6px 6px 0; border-bottom: 1px solid var(--line); }
+td { padding: 6px 6px 6px 0; border-bottom: 1px solid var(--line); font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+th:not(:first-child), td:not(:first-child) { text-align: right; }
+
+/* Como funciona */
+details.ayuda { padding: 12px 14px; }
+details.ayuda summary { cursor: pointer; font-weight: 600; }
+details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-width: 65ch; }
+
+/* Ventanas */
+dialog { border: 1px solid var(--line); border-radius: 16px; background: var(--card); color: var(--fg); padding: 0; width: min(440px, calc(100vw - 32px)); }
+dialog::backdrop { background: rgba(8, 18, 20, .45); }
+dialog form { padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+dialog h2 { margin: 0; font-size: 18px; }
+.campo { display: flex; flex-direction: column; gap: 4px; }
+.campo label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.campo input, .campo select { font: inherit; font-size: 16px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--fg); width: 100%; }
+.fila { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ayudita { font-size: 13px; color: var(--muted); margin: 0; }
+.err { font-size: 13px; color: var(--down); margin: 0; }
+.acciones { display: flex; gap: 8px; justify-content: flex-end; }
+@media (prefers-reduced-motion: no-preference) { .v-head .chev { transition: transform .15s; } }
+.vuelo.abierto .chev { transform: rotate(180deg); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="titulos">
+      <h1>Radar de vuelos</h1>
+      <p class="sub" id="subtitulo">Busca todos los días a las 19 en 0 recorridos y guarda los vuelos más baratos que encuentra</p>
+    </div>
+    <div class="monedas">
+      <div class="seg" id="seg-moneda" role="group" aria-label="Moneda"></div>
+      <button class="icono" id="btn-tercera" type="button" aria-label="Agregar moneda">+</button>
+    </div>
+  </header>
+
+  <div id="aviso-global" hidden></div>
+
+  <section aria-labelledby="t-rutas">
+    <div class="sec-head">
+      <h2 class="sec-titulo" id="t-rutas">Mis recorridos</h2>
+      <button class="btn sec" id="btn-agregar" type="button">+ Agregar recorrido</button>
+    </div>
+    <div class="rutas" id="rutas"></div>
+  </section>
+
+  <section aria-labelledby="t-vuelos">
+    <div class="sec-head">
+      <h2 class="sec-titulo" id="t-vuelos">Vuelos más baratos encontrados</h2>
+      <button class="btn" id="btn-consultar" type="button">Consultar ahora</button>
+    </div>
+    <p class="meta num" id="meta">0 vuelos en la lista · última revisión —</p>
+    <div class="progreso" id="progreso" hidden></div>
+    <div id="aviso-consulta" hidden></div>
+    <div class="lista" id="lista"></div>
+  </section>
+
+  <details class="card ayuda" id="ayuda">
+    <summary>Cómo funciona</summary>
+    <p>Cada recorrido es un trayecto solo de ida; para el regreso agregas el recorrido al revés. Todos los días a las 19 (hora de Murcia) el radar consulta Expedia para cada recorrido en seis fechas repartidas en los próximos 90 días: a 7, 21, 35, 49, 63 y 77 días de hoy. De todas las opciones que encuentra guarda la más barata; si ese mismo vuelo ya estaba en la lista, le agrega el precio del día a su historial y actualiza el precio actual. Con todas las opciones vistas calcula el precio promedio del día para la ruta, y así sabes si un vuelo está más barato o más caro de lo normal. En la misma consulta se actualizan las tasas de cambio que usa el selector de moneda; los precios antiguos se convierten con la tasa de su día. También puedes lanzar la consulta tú mismo con «Consultar ahora». El radar compara precios pero no reserva: para comprar, busca el vuelo en Expedia.</p>
+  </details>
+</div>
+
+<dialog id="dlg-ruta">
+  <form id="form-ruta" method="dialog" novalidate>
+    <h2>Agregar recorrido</h2>
+    <div class="campo"><label for="f-desde">Desde</label><input id="f-desde" autocomplete="off" placeholder="Ciudad de salida, p. ej. Madrid" required></div>
+    <div class="campo"><label for="f-hasta">Hasta</label><input id="f-hasta" autocomplete="off" placeholder="Ciudad de llegada, p. ej. Bogotá" required></div>
+    <div class="campo"><label for="f-tipo">Vuelos</label>
+      <select id="f-tipo">
+        <option value="ambos">Directos y con escalas</option>
+        <option value="directos">Solo directos</option>
+        <option value="escalas">Solo con escalas</option>
+      </select>
+    </div>
+    <div class="fila">
+      <div class="campo"><label for="f-escalas">Máximo de escalas</label>
+        <select id="f-escalas"><option>1</option><option>2</option><option>3</option></select>
+      </div>
+      <div class="campo"><label for="f-pax">Pasajeros</label>
+        <select id="f-pax"><option>1</option><option>2</option><option>3</option><option>4</option></select>
+      </div>
+    </div>
+    <p class="ayudita">Cada recorrido es solo de ida. Para el regreso, agrega el recorrido al revés. Entra en la consulta de hoy a las 19</p>
+    <p class="err" id="err-ruta" hidden></p>
+    <div class="acciones">
+      <button class="btn sec" type="button" data-cerrar>Cancelar</button>
+      <button class="btn" type="submit" id="btn-guardar-ruta">Agregar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-moneda">
+  <form id="form-moneda" method="dialog" novalidate>
+    <h2 id="t-moneda">Tercera moneda</h2>
+    <div class="campo"><label for="f-moneda">Código de 3 letras</label><input id="f-moneda" maxlength="3" autocomplete="off" autocapitalize="characters" placeholder="COP" class="num"></div>
+    <p class="ayudita">Por ejemplo COP, MXN, ARS, CLP, PEN, BRL o GBP.</p>
+    <p class="err" id="err-moneda" hidden></p>
+    <div class="acciones">
+      <button class="btn sec" type="button" data-cerrar>Cancelar</button>
+      <button class="btn" type="submit">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Estado ----------
+  var S = {
+    db: null, dbListo: false, dbFalla: false,
+    rutas: [], vuelos: [], tasas: [], tercera: null,
+    moneda: leer("radar.moneda") || "USD",
+    maleta: leer("radar.maleta") === "1",
+    abiertos: new Set(),
+    consultando: false,
+    porQuitar: null
+  };
+  var MAX_RUTAS = 6;
+  var DIAS = [7, 21, 35, 49, 63, 77];
+  var SERVIDOR = "Expedia", HERRAMIENTA = "search_flights";
+
+  function leer(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function guardar(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+
+  function usar(nombre) {
+    var c = window.claude;
+    if (!c || typeof c.use !== "function") return Promise.resolve(null);
+    var t = new Promise(function (r) { setTimeout(function () { r(null); }, 12000); });
+    return Promise.race([Promise.resolve().then(function () { return c.use(nombre); }).catch(function () { return null; }), t]);
+  }
+
+  // ---------- Fechas (hora de Murcia) ----------
+  function hoy() {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  }
+  function sumarDias(f, n) {
+    var d = new Date(f + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
+  var fmtDia = new Intl.DateTimeFormat("es-ES", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" });
+  var fmtCorta = new Intl.DateTimeFormat("es-ES", { timeZone: "UTC", day: "numeric", month: "short" });
+  var fmtLarga = new Intl.DateTimeFormat("es-ES", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" });
+  function limpiarPunto(s) { return s.replace(/\./g, ""); }
+  function dia(f) { return f ? limpiarPunto(fmtDia.format(new Date(f + "T12:00:00Z"))) : "—"; }
+  function corta(f) { return f ? limpiarPunto(fmtCorta.format(new Date(f + "T12:00:00Z"))) : "—"; }
+  function larga(f) { return f ? limpiarPunto(fmtLarga.format(new Date(f + "T12:00:00Z"))) : "—"; }
+  function revision(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    if (isNaN(d)) return corta(String(iso).slice(0, 10));
+    var p = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+    return limpiarPunto(p);
+  }
+  function h24(t) {
+    if (!t) return "—";
+    var m = String(t).trim().match(/^(\d{1,2}):(\d{2})\s*([AaPp])\.?[Mm]?\.?$/);
+    if (!m) return String(t);
+    var h = parseInt(m[1], 10) % 12; if (/p/i.test(m[3])) h += 12;
+    return (h < 10 ? "0" : "") + h + ":" + m[2];
+  }
+
+  // ---------- Ids ----------
+  function slug(s) {
+    return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  }
+  function limpioId(s) { return String(s || "").replace(/[^A-Za-z0-9._-]/g, ""); }
+  function idRuta(o, d) { return slug(o) + "--" + slug(d); }
+  function idVuelo(rutaId, fecha, numeros) {
+    var id = limpioId(rutaId) + "_" + limpioId(fecha) + "_" + numeros.map(limpioId).filter(Boolean).join("-");
+    return id.slice(0, 190);
+  }
+
+  // ---------- Monedas ----------
+  function tasaPara(fecha) {
+    if (!S.tasas.length) return null;
+    var elegida = null;
+    for (var i = 0; i < S.tasas.length; i++) { if (!fecha || S.tasas[i].fecha <= fecha) elegida = S.tasas[i]; }
+    return (elegida || S.tasas[0]).rates || null;
+  }
+  function tasaActual() { return S.tasas.length ? S.tasas[S.tasas.length - 1].rates : null; }
+  // Convierte un valor en USD a la moneda elegida, con la tasa de la fecha dada (o la más reciente).
+  function conv(usd, fecha) {
+    if (usd == null || isNaN(usd)) return null;
+    if (S.moneda === "USD") return usd;
+    var r = fecha ? tasaPara(fecha) : tasaActual();
+    var t = r && r[S.moneda];
+    return t ? usd * t : null;
+  }
+  // Convierte un monto en otra moneda a USD con la tasa más reciente.
+  function aUSD(v, moneda) {
+    if (v == null) return null;
+    if (!moneda || moneda === "USD") return v;
+    var r = tasaActual(); var t = r && r[moneda];
+    return t ? v / t : null;
+  }
+  function agrupar(n) {
+    var s = String(Math.round(Math.abs(n)));
+    return s.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  }
+  function dinero(v) { return v == null ? "sin tasa" : S.moneda + " " + (v < 0 ? "−" : "") + agrupar(v); }
+  function pct(a, b) { return b ? (a - b) / b * 100 : null; }
+  function fmtPct(p) { return (Math.abs(p) < 0.05 ? "0" : Math.abs(p).toFixed(1).replace(".", ",")) + " %"; }
+
+  // ---------- Maleta ----------
+  function costoMaletaUSD(v) {
+    var m = v.maleta;
+    if (!m || m.costo == null || isNaN(m.costo)) return 0;
+    var u = aUSD(Number(m.costo), m.moneda);
+    return u == null ? null : u * (v.pasajeros || 1);
+  }
+  function precioMostradoUSD(v) {
+    var base = Number(v.precioActual);
+    if (!S.maleta) return base;
+    var b = costoMaletaUSD(v);
+    return base + (b || 0);
+  }
+
+  // ---------- Pintar ----------
+  function pintarMonedas() {
+    var cods = ["USD", "EUR"]; if (S.tercera) cods.push(S.tercera);
+    if (cods.indexOf(S.moneda) < 0) S.moneda = "USD";
+    $("seg-moneda").innerHTML = cods.map(function (c) {
+      return '<button type="button" data-moneda="' + esc(c) + '" aria-pressed="' + (c === S.moneda) + '">' + esc(c) + "</button>";
+    }).join("");
+    var b = $("btn-tercera");
+    if (S.tercera) {
+      b.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2.5l2.5 2.5L5.5 13H3v-2.5z"/></svg>';
+      b.setAttribute("aria-label", "Cambiar tercera moneda");
+    } else { b.textContent = "+"; b.setAttribute("aria-label", "Agregar moneda"); }
+    b.disabled = !S.db;
+  }
+
+  function textoRuta(r) {
+    var n = r.maxEscalas || 1, esc_ = n === 1 ? "1 escala" : n + " escalas";
+    var t = r.tipo === "directos" ? "solo directos" : r.tipo === "escalas" ? "solo con escalas, hasta " + esc_ : "directos o hasta " + esc_;
+    var p = (r.pasajeros || 1) === 1 ? "1 pasajero" : r.pasajeros + " pasajeros";
+    return t + " · " + p + " · solo ida";
+  }
+
+  function pintarRutas() {
+    var n = S.rutas.length;
+    $("subtitulo").textContent = "Busca todos los días a las 19 en " + n + " recorrido" + (n === 1 ? "" : "s") + " y guarda los vuelos más baratos que encuentra";
+    var b = $("btn-agregar");
+    b.disabled = !S.db || n >= MAX_RUTAS;
+    b.textContent = n >= MAX_RUTAS ? "6 de 6 recorridos" : "+ Agregar recorrido";
+    if (!n) {
+      $("rutas").innerHTML = '<div class="card vacio" style="grid-column:1/-1">' +
+        (S.db ? "Todavía no tienes recorridos. Toca <b>+ Agregar recorrido</b> y escribe, por ejemplo, Madrid → Bogotá." :
+          S.dbListo ? "Aquí aparecerán tus recorridos." : "Cargando tus recorridos…") + "</div>";
+      return;
+    }
+    $("rutas").innerHTML = S.rutas.map(function (r) {
+      var conf = S.porQuitar === r.id;
+      return '<div class="card ruta"><div><b>' + esc(r.origen) + " → " + esc(r.destino) + "</b><span>" + esc(textoRuta(r)) + "</span></div>" +
+        '<button type="button" class="quitar' + (conf ? " confirmar" : "") + '" data-quitar="' + esc(r.id) + '" aria-label="Quitar ' + esc(r.origen + " a " + r.destino) + '">' + (conf ? "¿Quitar?" : "×") + "</button></div>";
+    }).join("");
+  }
+
+  function vuelosVisibles() {
+    var h = hoy();
+    var ids = new Set(S.rutas.map(function (r) { return r.id; }));
+    return S.vuelos.filter(function (v) {
+      return ids.has(v.rutaId) && v.salida && v.salida.fecha >= h && v.disponible !== false && !isNaN(Number(v.precioActual));
+    }).sort(function (a, b) { return precioMostradoUSD(a) - precioMostradoUSD(b); });
+  }
+
+  function cambioDia(v) {
+    var h = v.historial || [];
+    var hoyF = hoy();
+    if (h.length <= 1 && v.primeraVez === hoyF) return '<span class="etiqueta">nuevo hoy</span>';
+    if (h.length < 2) return "";
+    var a = h[h.length - 1], b = h[h.length - 2];
+    var ca = conv(a.precio, a.fecha), cb = conv(b.precio, b.fecha);
+    if (ca == null || cb == null) return '<span class="cambio igual">sin tasa</span>';
+    var d = ca - cb;
+    var cuando = b.fecha === sumarDias(a.fecha, -1) ? "vs ayer" : "vs " + corta(b.fecha);
+    if (Math.round(d) === 0) return '<span class="cambio igual">= ' + cuando + "</span>";
+    return '<span class="cambio ' + (d > 0 ? "sube" : "baja") + '">' + (d > 0 ? "+" : "−") + S.moneda + " " + agrupar(d) + " " + cuando + "</span>";
+  }
+
+  function grafica(v, ruta) {
+    var h = (v.historial || []).slice().sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; });
+    var pts = h.map(function (p) { return { f: p.fecha, y: conv(p.precio, p.fecha) }; }).filter(function (p) { return p.y != null; });
+    if (!pts.length) return '<p class="nota">sin tasa para ' + esc(S.moneda) + "</p>";
+    var prom = ruta && ruta.promedio ? conv(ruta.promedio.valor, ruta.promedio.fecha) : null;
+    var W = 320, H = 150, L = 58, R = 12, T = 14, B = 26;
+    var ys = pts.map(function (p) { return p.y; }); if (prom != null) ys.push(prom);
+    var mn = Math.min.apply(null, ys), mx = Math.max.apply(null, ys);
+    if (mx - mn < 1) { mn -= 10; mx += 10; }
+    var pad = (mx - mn) * 0.12; mn -= pad; mx += pad;
+    function X(i) { return pts.length === 1 ? (L + W - R) / 2 : L + i * (W - L - R) / (pts.length - 1); }
+    function Y(y) { return T + (mx - y) / (mx - mn) * (H - T - B); }
+    var s = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Historial de precio">';
+    var ticks = [mx - pad, (mx + mn) / 2, mn + pad];
+    ticks.forEach(function (t) {
+      s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(t).toFixed(1) + '" y2="' + Y(t).toFixed(1) + '" stroke="var(--line)" stroke-width="1"/>';
+      s += '<text x="' + (L - 6) + '" y="' + (Y(t) + 3.5).toFixed(1) + '" text-anchor="end" font-size="10" fill="var(--muted)" font-family="var(--mono)">' + esc(agrupar(t)) + "</text>";
+    });
+    if (prom != null) {
+      s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(prom).toFixed(1) + '" y2="' + Y(prom).toFixed(1) + '" stroke="var(--avg)" stroke-width="1.6" stroke-dasharray="5 4"/>';
+      s += '<text x="' + (W - R) + '" y="' + (Y(prom) - 5).toFixed(1) + '" text-anchor="end" font-size="10" fill="var(--avg)" font-family="var(--sans)">promedio</text>';
+    }
+    if (pts.length > 1) {
+      var d = pts.map(function (p, i) { return (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(p.y).toFixed(1); }).join(" ");
+      var area = d + " L" + X(pts.length - 1).toFixed(1) + " " + (H - B) + " L" + X(0).toFixed(1) + " " + (H - B) + " Z";
+      s += '<path d="' + area + '" fill="var(--accent)" fill-opacity="0.09"/>';
+      s += '<path d="' + d + '" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+    }
+    pts.forEach(function (p, i) {
+      var last = i === pts.length - 1;
+      s += '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y(p.y).toFixed(1) + '" r="' + (last ? 4 : 2.4) + '" fill="' + (last ? "var(--accent)" : "var(--card)") + '" stroke="var(--accent)" stroke-width="1.6"/>';
+    });
+    s += '<text x="' + X(0).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="' + (pts.length === 1 ? "middle" : "start") + '" font-size="10" fill="var(--muted)" font-family="var(--sans)">' + esc(corta(pts[0].f)) + "</text>";
+    if (pts.length > 1) s += '<text x="' + X(pts.length - 1).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="end" font-size="10" fill="var(--muted)" font-family="var(--sans)">' + esc(corta(pts[pts.length - 1].f)) + "</text>";
+    s += "</svg>";
+    return s;
+  }
+
+  function cuerpo(v, ruta) {
+    var m = v.maleta || {};
+    var bagUSD = costoMaletaUSD(v);
+    var notaBag = bagUSD === null ? ' <span class="baja">(sin tasa para ' + esc(m.moneda) + ")</span>" : "";
+    var h = (v.historial || []).slice().sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; });
+    var mejor = h.reduce(function (acc, p) { return !acc || p.precio < acc.precio ? p : acc; }, null);
+    var prom = ruta && ruta.promedio;
+    var actual = conv(Number(v.precioActual)), promC = prom ? conv(prom.valor, prom.fecha) : null;
+    var frente = "—";
+    if (prom && actual != null && promC != null) {
+      var p = pct(actual, promC);
+      frente = '<span class="' + (p <= 0 ? "sube" : "baja") + '">' + fmtPct(p) + " " + (p <= 0 ? "más barato" : "más caro") + "</span>";
+    } else if (prom) frente = "sin tasa";
+    var esc_ = Number(v.escalas || 0);
+    var html = '<div class="maleta"><span>Maleta facturada: <b>' + esc(m.texto || "sin dato") + "</b>" + notaBag + "</span>" +
+      '<label><input type="checkbox" data-maleta ' + (S.maleta ? "checked" : "") + "> Incluir en el precio</label></div>";
+    html += '<div class="grafica"><p class="mini">Historial de precio</p>' + grafica(v, ruta) + '<p class="nota">Tarifa total de ' + esc(v.pasajeros || 1) + " pasajero" + ((v.pasajeros || 1) > 1 ? "s" : "") + ", sin maleta. La línea naranja es el promedio de la ruta.</p></div>";
+    html += '<dl class="datos">' +
+      dato("Primera vez encontrado", esc(larga(v.primeraVez))) +
+      dato("Mejor precio visto", mejor ? '<span class="num">' + esc(dinero(conv(mejor.precio, mejor.fecha))) + "</span><small>" + esc(larga(mejor.fecha)) + "</small>" : "—") +
+      dato("Escalas", esc_ === 0 ? "Directo" : esc_ + (esc_ === 1 ? " escala" : " escalas")) +
+      dato("Duración", '<span class="num">' + esc(v.duracion || "—") + "</span>") +
+      dato("Última revisión", '<span class="num">' + esc(revision(v.ultimaRevision)) + "</span>") +
+      dato("Asientos a este precio", v.asientos ? '<span class="num">' + esc(v.asientos) + "</span>" : "sin dato") +
+      dato("Promedio de la ruta", prom ? '<span class="num">' + esc(dinero(promC)) + "</span><small>" + esc(prom.muestras) + " muestras · " + esc(corta(prom.fecha)) + "</small>" : "Aún sin datos") +
+      dato("Frente al promedio", frente) + "</dl>";
+    html += '<div><p class="mini c">Vuelos</p><div class="tramos">' + (v.tramosIda || []).map(function (t) {
+      return '<div class="tramo"><span class="num">' + esc(t.vuelo) + '</span><span class="num">' + esc(t.de) + " → " + esc(t.a) + "</span></div>";
+    }).join("") + "</div></div>";
+    var filas = h.slice().reverse().map(function (p, i, arr) {
+      var c = conv(p.precio, p.fecha), prev = arr[i + 1], var_ = "—", cls = "igual";
+      if (prev) {
+        var cp = conv(prev.precio, prev.fecha);
+        if (c != null && cp != null) {
+          var q = pct(c, cp);
+          if (Math.abs(q) >= 0.05) { cls = q > 0 ? "sube" : "baja"; var_ = (q > 0 ? "+" : "−") + fmtPct(q); } else var_ = "0 %";
+        }
+      }
+      return "<tr><td>" + esc(corta(p.fecha)) + "</td><td>" + esc(dinero(c)) + '</td><td class="' + cls + '">' + var_ + "</td></tr>";
+    }).join("");
+    html += '<div><p class="mini">Precios registrados</p><div class="tabla-wrap"><table><thead><tr><th>Fecha</th><th>Precio</th><th>Variación</th></tr></thead><tbody>' + filas + "</tbody></table></div></div>";
+    return html;
+  }
+  function dato(t, v) { return "<div><dt>" + esc(t) + "</dt><dd>" + v + "</dd></div>"; }
+
+  function pintarVuelos() {
+    var lista = vuelosVisibles();
+    var ult = lista.reduce(function (acc, v) { return v.ultimaRevision && (!acc || v.ultimaRevision > acc) ? v.ultimaRevision : acc; }, null);
+    $("meta").textContent = lista.length + (lista.length === 1 ? " vuelo" : " vuelos") + " en la lista · última revisión " + (ult ? revision(ult) : "—");
+    $("btn-consultar").disabled = S.consultando || !S.db || !S.rutas.length;
+    if (!lista.length) {
+      $("lista").innerHTML = '<div class="card vacio">' + (S.rutas.length
+        ? "Aún no hay vuelos guardados. La consulta de las 19 los traerá, o toca <b>Consultar ahora</b>."
+        : "Cuando agregues un recorrido, aquí verás el vuelo más barato de cada consulta, ordenado del precio más bajo al más alto, con su historial.") + "</div>";
+      return;
+    }
+    var rutas = {}; S.rutas.forEach(function (r) { rutas[r.id] = r; });
+    $("lista").innerHTML = lista.map(function (v) {
+      var ruta = rutas[v.rutaId] || {};
+      var abierto = S.abiertos.has(v.id);
+      var total = conv(precioMostradoUSD(v));
+      var pax = v.pasajeros || 1;
+      var orig = ruta.origen || v.origen, dest = ruta.destino || v.destino;
+      var s = v.salida || {}, l = v.llegadaIda || {};
+      var linea = "Salida " + esc(dia(s.fecha)) + ' · <span class="num">' + esc(h24(s.hora)) + "</span> (hora " + esc(orig) + ') → <span class="num">' + esc(h24(l.hora)) + "</span> del " + esc(dia(l.fecha)) + " (hora " + esc(dest) + ') · <span class="num">' + esc(v.duracion || "—") + "</span> de viaje";
+      return '<article class="card vuelo' + (abierto ? " abierto" : "") + '">' +
+        '<button type="button" class="v-head" data-abrir="' + esc(v.id) + '" aria-expanded="' + abierto + '">' +
+        '<div class="v-top"><div class="v-left"><b>' + esc((v.aerolineas || []).join(" + ") || "Aerolínea") + ' <span class="chev" aria-hidden="true">▾</span></b><span class="gris">' + esc(orig) + " → " + esc(dest) + "</span></div>' +
+        '<div class="v-right"><span class="precio">' + esc(dinero(total)) + '</span><span class="pp">' + esc(total == null ? "" : dinero(total / pax) + " por persona") + "</span>" + cambioDia(v) + "</div></div>" +
+        '<div class="v-linea">' + linea + "</div></button>" +
+        '<div class="v-body"' + (abierto ? "" : " hidden") + ">" + (abierto ? cuerpo(v, ruta) : "") + "</div></article>";
+    }).join("");
+  }
+
+  function pintar() { pintarMonedas(); pintarRutas(); pintarVuelos(); }
+
+  function aviso(id, html, tipo, boton) {
+    var el = $(id);
+    if (!html) { el.hidden = true; el.innerHTML = ""; return; }
+    el.className = "aviso" + (tipo === "error" ? " error" : "");
+    el.innerHTML = "<span>" + html + "</span>" + (boton ? '<button type="button" class="btn sec" data-permisos>' + esc(boton) + "</button>" : "");
+    el.hidden = false;
+  }
+
+  // ---------- Eventos ----------
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest("[data-moneda],[data-abrir],[data-quitar],[data-cerrar],[data-permisos]");
+    if (!t) { if (S.porQuitar) { S.porQuitar = null; pintarRutas(); } return; }
+    if (t.dataset.moneda) {
+      S.moneda = t.dataset.moneda; guardar("radar.moneda", S.moneda); pintarMonedas(); pintarVuelos();
+    } else if (t.dataset.abrir) {
+      var id = t.dataset.abrir;
+      if (S.abiertos.has(id)) S.abiertos.delete(id); else S.abiertos.add(id);
+      pintarVuelos();
+    } else if (t.dataset.quitar) {
+      quitarRuta(t.dataset.quitar);
+    } else if (t.hasAttribute("data-cerrar")) {
+      t.closest("dialog").close();
+    } else if (t.hasAttribute("data-permisos")) {
+      usar("permissions").then(function (p) { if (p && p.manage) return p.manage(); }).catch(function () {
+        aviso("aviso-consulta", "Abre el menú del artefacto y entra en <b>Permisos</b> para dar acceso a Expedia.", "error");
+      });
+    }
+  });
+  document.addEventListener("change", function (e) {
+    if (e.target.matches("[data-maleta]")) {
+      S.maleta = e.target.checked; guardar("radar.maleta", S.maleta ? "1" : "0"); pintarVuelos();
+    }
+  });
+
+  $("btn-agregar").addEventListener("click", function () {
+    if (!S.db || S.rutas.length >= MAX_RUTAS) return;
+    $("form-ruta").reset(); $("err-ruta").hidden = true; syncEscalas();
+    $("dlg-ruta").showModal(); $("f-desde").focus();
+  });
+  function syncEscalas() { $("f-escalas").disabled = $("f-tipo").value === "directos"; }
+  $("f-tipo").addEventListener("change", syncEscalas);
+
+  $("form-ruta").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var o = $("f-desde").value.trim().replace(/\s+/g, " "), d = $("f-hasta").value.trim().replace(/\s+/g, " ");
+    var err = $("err-ruta");
+    function falla(m) { err.textContent = m; err.hidden = false; }
+    if (!o || !d) return falla("Escribe la ciudad de salida y la de llegada.");
+    if (!slug(o) || !slug(d)) return falla("Usa nombres de ciudad con letras, por ejemplo Bogotá.");
+    var id = idRuta(o, d);
+    if (slug(o) === slug(d)) return falla("La salida y la llegada no pueden ser la misma ciudad.");
+    if (S.rutas.some(function (r) { return r.id === id; })) return falla("Ya tienes ese recorrido.");
+    if (S.rutas.length >= MAX_RUTAS) return falla("Ya tienes 6 de 6 recorridos.");
+    var doc = { id: id, origen: o, destino: d, tipo: $("f-tipo").value, maxEscalas: Number($("f-escalas").value), pasajeros: Number($("f-pax").value), creado: new Date().toISOString(), promedio: null, promedios: [] };
+    if (doc.tipo === "directos") doc.maxEscalas = 0;
+    var b = $("btn-guardar-ruta"); b.disabled = true;
+    S.db.doc("rutas/" + id).set(doc).then(function () { $("dlg-ruta").close(); })
+      .catch(function (x) { falla(errorDb(x)); }).finally(function () { b.disabled = false; });
+  });
+
+  function quitarRuta(id) {
+    if (S.porQuitar !== id) { S.porQuitar = id; pintarRutas(); return; }
+    S.porQuitar = null;
+    S.db.doc("rutas/" + id).delete().catch(function (x) { aviso("aviso-global", errorDb(x), "error"); });
+  }
+
+  $("btn-tercera").addEventListener("click", function () {
+    if (!S.db) return;
+    $("t-moneda").textContent = S.tercera ? "Cambiar tercera moneda" : "Tercera moneda";
+    $("f-moneda").value = S.tercera || ""; $("err-moneda").hidden = true;
+    $("dlg-moneda").showModal(); $("f-moneda").focus();
+  });
+  $("f-moneda").addEventListener("input", function () { this.value = this.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3); });
+  $("form-moneda").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var c = $("f-moneda").value.toUpperCase(), err = $("err-moneda");
+    if (!/^[A-Z]{3}$/.test(c)) { err.textContent = "Escribe un código de 3 letras, por ejemplo COP."; err.hidden = false; return; }
+    if (c === "USD" || c === "EUR") { err.textContent = "USD y EUR ya están en el selector."; err.hidden = false; return; }
+    S.db.doc("config/monedas").set({ codigo: c }).then(function () {
+      S.moneda = c; guardar("radar.moneda", c); $("dlg-moneda").close();
+    }).catch(function (x) { err.textContent = errorDb(x); err.hidden = false; });
+  });
+
+  function errorDb(x) {
+    var c = x && x.code;
+    if (c === "invalid_argument") return "No tienes permiso para guardar cambios en este radar.";
+    if (c === "quota_exceeded") return "La base de datos del radar está llena. Quita recorridos antiguos.";
+    if (c === "resource_exhausted") return "Demasiados cambios seguidos. Espera unos segundos y vuelve a intentar.";
+    if (c === "revoked") return "Esta vista perdió el acceso a los datos. Recarga la página.";
+    return "No se pudo guardar. Revisa tu conexión y vuelve a intentar.";
+  }
+
+  // ---------- Consulta en Expedia ----------
+  var FATALES = {
+    server_not_connected: "Expedia no está conectado. Agrégalo en claude.ai → Configuración → Conectores y vuelve a tocar Consultar ahora.",
+    server_not_found: "No se encontró el conector de Expedia. Agrégalo de nuevo en claude.ai → Configuración → Conectores.",
+    needs_reauth: "La conexión con Expedia caducó. Reconéctalo en claude.ai → Configuración → Conectores y vuelve a intentar.",
+    selection_required: "Tienes más de un conector de Expedia. Elige cuál usar en el aviso de Claude y vuelve a tocar Consultar ahora.",
+    not_in_manifest: "El radar no tiene permiso para usar Expedia. Dale acceso en Permisos y vuelve a tocar Consultar ahora.",
+    consent_required: "El radar no tiene permiso para usar Expedia. Dale acceso en Permisos y vuelve a tocar Consultar ahora.",
+    not_granted: "Esta vista no puede usar conectores. Abre el radar desde claude.ai o la app de Claude con tu sesión iniciada.",
+    capability_disabled: "Esta vista no puede usar conectores. Abre el radar desde claude.ai o la app de Claude con tu sesión iniciada.",
+    capability_removed: "Esta vista no puede usar conectores. Abre el radar desde claude.ai o la app de Claude con tu sesión iniciada.",
+    blocked_by_policy: "Tu organización bloquea la búsqueda de vuelos de Expedia para tu cuenta.",
+    approval_required: "Claude necesita tu aprobación para usar Expedia. Toca Consultar ahora otra vez y acepta el aviso.",
+    user_changed: "Cambió la cuenta con la que entraste. Recarga la página."
+  };
+  function progreso(t) { var el = $("progreso"); el.textContent = t || ""; el.hidden = !t; }
+  function espera(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  function buscar(mcp, input) {
+    return mcp.callTool(SERVIDOR, HERRAMIENTA, input, { cache: false }).catch(function (e) {
+      if (e && e.retryable) return espera((e.retryAfterMs || 1500) + Math.random() * 1000).then(function () { return mcp.callTool(SERVIDOR, HERRAMIENTA, input, { cache: false }); });
+      throw e;
+    });
+  }
+
+  function textoMaleta(op) {
+    var fo = (op.fare_options || [])[0] || {};
+    var b = (fo.baggage_fees || []).filter(function (x) { return x.bag_type === "FIRST_BAG"; })[0];
+    if (!b) return { texto: "sin dato", costo: null, moneda: null };
+    var f = b.fees || {}, cur = f.currency || null;
+    function n(x) { var v = Number(x); return isNaN(v) ? null : v; }
+    function t(x) { return String(Math.round(x * 100) / 100).replace(".", ","); }
+    if (b.category === "ALLOWED") return { texto: "incluida", costo: 0, moneda: cur };
+    if (b.category === "NOT_ALLOWED") return { texto: "no permitida", costo: null, moneda: null };
+    if (b.category === "FEE_APPLIES") {
+      if (n(f.fixed_charge) != null) return { texto: t(n(f.fixed_charge)) + " " + (cur || "") + " por trayecto", costo: n(f.fixed_charge), moneda: cur };
+      if (n(f.max_charge) != null) return { texto: t(n(f.min_charge) || 0) + " a " + t(n(f.max_charge)) + " " + (cur || "") + " por trayecto", costo: n(f.max_charge), moneda: cur };
+      return { texto: "con costo (sin monto)", costo: null, moneda: cur };
+    }
+    return { texto: "sin dato", costo: null, moneda: null };
+  }
+
+  function opcion(op, ruta) {
+    var sl = (op.slices || [])[0]; if (!sl) return null;
+    var tp = op.price && op.price.total_price; if (!tp) return null;
+    var precio = aUSD(Number(tp.value), tp.currency);
+    if (precio == null || isNaN(precio)) return null;
+    var legs = sl.legs || [];
+    var aer = [];
+    legs.forEach(function (l) { var n = l.operating_airline_name || l.marketing_airline_name; if (n && aer.indexOf(n) < 0) aer.push(n); });
+    var tramos = legs.map(function (l) { return { vuelo: (l.marketing_airline_code || "") + (l.flight_number || ""), de: l.departure_airport_code || "", a: l.arrival_airport_code || "" }; });
+    var escalas = sl.number_of_stops != null ? Number(sl.number_of_stops) : Math.max(0, legs.length - 1);
+    return {
+      precio: Math.round(precio * 100) / 100,
+      aerolineas: aer, tramosIda: tramos, numerosVuelo: tramos.map(function (t) { return t.vuelo; }),
+      escalas: escalas, duracion: sl.flight_duration || "",
+      salida: { fecha: sl.departure_date, hora: h24(sl.departure_time), aeropuerto: sl.departure_airport_code || (tramos[0] && tramos[0].de) || "" },
+      llegadaIda: { fecha: sl.arrival_date, hora: h24(sl.arrival_time), dias: Number(sl.departure_arrival_day_difference || 0) },
+      maleta: textoMaleta(op), asientos: sl.seats_left || null
+    };
+  }
+
+  function consultarRuta(mcp, ruta, idx, total, resumen) {
+    var h = hoy(), vistas = [], i = 0;
+    var nombre = ruta.origen + " → " + ruta.destino + (total > 1 ? " (" + (idx + 1) + "/" + total + ")" : "");
+    function siguiente() {
+      if (i >= DIAS.length) return Promise.resolve();
+      var fecha = sumarDias(h, DIAS[i]);
+      progreso(nombre + ": Consultando Expedia... " + (i + 1) + " de " + DIAS.length);
+      var input = {
+        origin: ruta.origen, destination: ruta.destino, departure_date: fecha,
+        adult_count: ruta.pasajeros || 1, cabin_class: "ECONOMY", sort_type: "PRICE", limit: 5,
+        filter_nearby_airport: false, number_of_stops: ruta.tipo === "directos" ? 0 : (ruta.maxEscalas || 1),
+        user_locale: "en-US", client_device_info: { device_type: "desktop", agent_name: "ClaudeAI" }
+      };
+      i++;
+      resumen.busquedas++;
+      return buscar(mcp, input).then(function (res) {
+        var p = res && res.payload;
+        if (typeof p === "string") { try { p = JSON.parse(p); } catch (e) { p = null; } }
+        var ops = (p && p.options) || [];
+        ops.forEach(function (op) {
+          var o = opcion(op, ruta);
+          if (!o) return;
+          if (ruta.tipo === "escalas" && o.escalas < 1) return;
+          if (ruta.tipo === "directos" && o.escalas > 0) return;
+          vistas.push(o);
+        });
+      }).catch(function (e) {
+        if (e && FATALES[e.code]) throw e;
+        resumen.errores.push(ruta.id + " " + fecha + ": " + ((e && e.message) || (e && e.code) || "error"));
+      }).then(siguiente);
+    }
+    return siguiente().then(function () { return guardarRuta(ruta, vistas, resumen); });
+  }
+
+  function guardarRuta(ruta, vistas, resumen) {
+    resumen.opciones += vistas.length;
+    if (!vistas.length) { resumen.sinResultados.push(ruta.id); return Promise.resolve(); }
+    var h = hoy(), ahora = new Date().toISOString();
+    var mejor = vistas.reduce(function (a, b) { return b.precio < a.precio ? b : a; });
+    var suma = vistas.reduce(function (a, b) { return a + b.precio; }, 0);
+    var promedio = { fecha: h, valor: Math.round(suma / vistas.length * 100) / 100, muestras: vistas.length };
+    var id = idVuelo(ruta.id, mejor.salida.fecha, mejor.numerosVuelo);
+    var ref = S.db.doc("vuelos/" + id);
+    return ref.get().then(function (snap) {
+      var doc;
+      if (snap.exists) {
+        doc = JSON.parse(JSON.stringify(snap.data()));
+        var hist = (doc.historial || []).filter(function (x) { return x.fecha !== h; });
+        hist.push({ fecha: h, precio: mejor.precio });
+        doc.historial = hist;
+        doc.precioActual = mejor.precio; doc.ultimaRevision = ahora; doc.disponible = true;
+        doc.asientos = mejor.asientos; doc.maleta = mejor.maleta;
+      } else {
+        doc = {
+          id: id, rutaId: ruta.id, origen: ruta.origen, destino: ruta.destino, pasajeros: ruta.pasajeros || 1,
+          aerolineas: mejor.aerolineas, tramosIda: mejor.tramosIda, numerosVuelo: mejor.numerosVuelo,
+          escalas: mejor.escalas, duracion: mejor.duracion, salida: mejor.salida, llegadaIda: mejor.llegadaIda,
+          maleta: mejor.maleta, asientos: mejor.asientos, precioActual: mejor.precio, precioInicial: mejor.precio,
+          primeraVez: h, ultimaRevision: ahora, disponible: true, historial: [{ fecha: h, precio: mejor.precio }]
+        };
+      }
+      return ref.set(doc);
+    }).then(function () {
+      resumen.guardados.push(id);
+      var lista = (ruta.promedios || []).filter(function (x) { return x.fecha !== h; });
+      lista.push(promedio);
+      return S.db.doc("rutas/" + ruta.id).update({ promedio: promedio, promedios: lista.slice(-60) });
+    });
+  }
+
+  $("btn-consultar").addEventListener("click", function () {
+    if (S.consultando || !S.db || !S.rutas.length) return;
+    S.consultando = true; pintarVuelos(); aviso("aviso-consulta", "");
+    progreso("Conectando con Expedia...");
+    var rutas = S.rutas.slice();
+    var resumen = { fecha: hoy(), inicio: new Date().toISOString(), fuente: "pagina", recorridos: rutas.length, busquedas: 0, opciones: 0, guardados: [], sinResultados: [], errores: [] };
+    usar("mcp").then(function (mcp) {
+      if (!mcp) { var e = new Error("sin mcp"); e.code = "not_granted"; throw e; }
+      var k = 0;
+      function otra() {
+        if (k >= rutas.length) return Promise.resolve();
+        var r = rutas[k]; var n = k; k++;
+        return consultarRuta(mcp, r, n, rutas.length, resumen).then(otra);
+      }
+      return otra();
+    }).then(function () {
+      resumen.fin = new Date().toISOString();
+      var msg = resumen.guardados.length
+        ? "Listo: " + resumen.busquedas + " búsquedas, " + resumen.opciones + " opciones vistas, " + resumen.guardados.length + " vuelo" + (resumen.guardados.length === 1 ? "" : "s") + " guardado" + (resumen.guardados.length === 1 ? "" : "s") + "."
+        : "Expedia no devolvió vuelos para tus recorridos en estas fechas. Revisa que los nombres de ciudad estén bien escritos.";
+      if (resumen.errores.length) msg += " " + resumen.errores.length + " búsqueda" + (resumen.errores.length === 1 ? "" : "s") + " fallaron; se reintentará en la próxima consulta.";
+      aviso("aviso-consulta", esc(msg), resumen.guardados.length ? "" : "error");
+      return S.db.doc("barridos/" + resumen.fecha).set(resumen).catch(function () {});
+    }).catch(function (e) {
+      var code = e && e.code;
+      var m = FATALES[code] || (e && e.code && /^(invalid_argument|quota_exceeded|resource_exhausted|revoked)$/.test(code) ? errorDb(e) : "No se pudo completar la consulta. Vuelve a intentarlo en unos minutos.");
+      var permiso = code === "not_in_manifest" || code === "consent_required";
+      aviso("aviso-consulta", esc(m), "error", permiso ? "Abrir permisos" : null);
+    }).finally(function () {
+      S.consultando = false; progreso(""); pintarVuelos();
+    });
+  });
+
+  // ---------- Base de datos ----------
+  function suscribir(db) {
+    function caida(e) {
+      if (e && e.code === "revoked") aviso("aviso-global", "Esta vista perdió el acceso a los datos del radar. Recarga la página.", "error");
+    }
+    db.collection("rutas").onSnapshot(function (snap) {
+      S.rutas = snap.docs.map(function (d) { var x = d.data(); x.id = x.id || d.id; return x; })
+        .sort(function (a, b) { return String(a.creado || "") < String(b.creado || "") ? -1 : 1; });
+      S.dbListo = true; pintarRutas(); pintarVuelos();
+    }, caida);
+    db.collection("vuelos").limit(1000).onSnapshot(function (snap) {
+      S.vuelos = snap.docs.map(function (d) { var x = d.data(); x.id = x.id || d.id; return x; });
+      pintarVuelos();
+    }, caida);
+    db.collection("tasas").onSnapshot(function (snap) {
+      S.tasas = snap.docs.map(function (d) { var x = d.data(); x.fecha = x.fecha || d.id; return x; })
+        .filter(function (x) { return x.rates; })
+        .sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; });
+      pintarVuelos();
+    }, caida);
+    db.doc("config/monedas").onSnapshot(function (snap) {
+      var c = snap.exists ? String((snap.data() || {}).codigo || "").toUpperCase() : "";
+      S.tercera = /^[A-Z]{3}$/.test(c) && c !== "USD" && c !== "EUR" ? c : null;
+      pintarMonedas(); pintarVuelos();
+    }, caida);
+  }
+
+  pintar();
+  usar("db").then(function (db) {
+    if (!db) {
+      S.dbListo = true; S.dbFalla = true;
+      aviso("aviso-global", "No se pudieron cargar tus datos. Abre el radar desde claude.ai o la app de Claude con tu sesión iniciada.", "error");
+      pintar(); return;
+    }
+    S.db = db; suscribir(db); pintar();
+  });
+})();
+</script>
