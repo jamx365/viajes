@@ -282,6 +282,7 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
       .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   }
   function limpioId(s) { return String(s || "").replace(/[^A-Za-z0-9._-]/g, ""); }
+  function nombre(s) { return String(s || "").replace(/(^|[\s\-(])(\p{L})/gu, function (m, a, b) { return a + b.toUpperCase(); }); }
   function idRuta(o, d) { return slug(o) + "--" + slug(d); }
   function idVuelo(rutaId, fecha, numeros) {
     var id = limpioId(rutaId) + "_" + limpioId(fecha) + "_" + numeros.map(limpioId).filter(Boolean).join("-");
@@ -368,7 +369,7 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
     }
     $("rutas").innerHTML = S.rutas.map(function (r) {
       var conf = S.porQuitar === r.id;
-      return '<div class="card ruta"><div><b>' + esc(r.origen) + " → " + esc(r.destino) + "</b><span>" + esc(textoRuta(r)) + "</span></div>" +
+      return '<div class="card ruta"><div><b>' + esc(nombre(r.origen)) + " → " + esc(nombre(r.destino)) + "</b><span>" + esc(textoRuta(r)) + "</span></div>" +
         '<button type="button" class="quitar' + (conf ? " confirmar" : "") + '" data-quitar="' + esc(r.id) + '" aria-label="Quitar ' + esc(r.origen + " a " + r.destino) + '">' + (conf ? "¿Quitar?" : "×") + "</button></div>";
     }).join("");
   }
@@ -495,7 +496,7 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
       var abierto = S.abiertos.has(v.id);
       var total = conv(precioMostradoUSD(v));
       var pax = v.pasajeros || 1;
-      var orig = ruta.origen || v.origen, dest = ruta.destino || v.destino;
+      var orig = nombre(ruta.origen || v.origen), dest = nombre(ruta.destino || v.destino);
       var s = v.salida || {}, l = v.llegadaIda || {};
       var linea = "Salida " + esc(dia(s.fecha)) + ' · <span class="num">' + esc(h24(s.hora)) + "</span> (hora " + esc(orig) + ') → <span class="num">' + esc(h24(l.hora)) + "</span> del " + esc(dia(l.fecha)) + " (hora " + esc(dest) + ') · <span class="num">' + esc(v.duracion || "—") + "</span> de viaje";
       return '<article class="card vuelo' + (abierto ? " abierto" : "") + '">' +
@@ -568,7 +569,7 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
 
   $("form-ruta").addEventListener("submit", function (e) {
     e.preventDefault();
-    var o = $("f-desde").value.trim().replace(/\s+/g, " "), d = $("f-hasta").value.trim().replace(/\s+/g, " ");
+    var o = nombre($("f-desde").value.trim().replace(/\s+/g, " ")), d = nombre($("f-hasta").value.trim().replace(/\s+/g, " "));
     var err = $("err-ruta");
     function falla(m) { err.textContent = m; err.hidden = false; }
     if (!o || !d) return falla("Escribe la ciudad de salida y la de llegada.");
@@ -648,7 +649,7 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
     var f = b.fees || {}, cur = f.currency || null;
     function n(x) { var v = Number(x); return isNaN(v) ? null : v; }
     function t(x) { return String(Math.round(x * 100) / 100).replace(".", ","); }
-    if (b.category === "ALLOWED") return { texto: "incluida", costo: 0, moneda: cur };
+    if (b.category === "ALLOWED" || b.category === "FREE" || b.category === "INCLUDED") return { texto: "incluida", costo: 0, moneda: cur };
     if (b.category === "NOT_ALLOWED") return { texto: "no permitida", costo: null, moneda: null };
     if (b.category === "FEE_APPLIES") {
       if (n(f.fixed_charge) != null) return { texto: t(n(f.fixed_charge)) + " " + (cur || "") + " por trayecto", costo: n(f.fixed_charge), moneda: cur };
