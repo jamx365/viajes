@@ -363,8 +363,8 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
     b.textContent = n >= MAX_RUTAS ? "6 de 6 recorridos" : "+ Agregar recorrido";
     if (!n) {
       $("rutas").innerHTML = '<div class="card vacio" style="grid-column:1/-1">' +
-        (S.db ? "Todavía no tienes recorridos. Toca <b>+ Agregar recorrido</b> y escribe, por ejemplo, Madrid → Bogotá." :
-          S.dbListo ? "Aquí aparecerán tus recorridos." : "Cargando tus recorridos…") + "</div>";
+        (S.db && S.dbListo ? "Todavía no tienes recorridos. Toca <b>+ Agregar recorrido</b> y escribe, por ejemplo, Madrid → Bogotá." :
+          S.dbFalla ? "Aquí aparecerán tus recorridos." : "Cargando tus recorridos…") + "</div>";
       return;
     }
     $("rutas").innerHTML = S.rutas.map(function (r) {
@@ -559,7 +559,7 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
   }
 
   $("btn-agregar").addEventListener("click", function () {
-    if (!S.db) return sinDatos();
+    if (!S.db || !S.dbListo) return sinDatos();
     if (S.rutas.length >= MAX_RUTAS) return;
     $("form-ruta").reset(); $("err-ruta").hidden = true; syncEscalas();
     abrir($("dlg-ruta"), $("f-desde"));
@@ -581,14 +581,14 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
     var doc = { id: id, origen: o, destino: d, tipo: $("f-tipo").value, maxEscalas: Number($("f-escalas").value), pasajeros: Number($("f-pax").value), creado: new Date().toISOString(), promedio: null, promedios: [] };
     if (doc.tipo === "directos") doc.maxEscalas = 0;
     var b = $("btn-guardar-ruta"); b.disabled = true;
-    S.db.doc("rutas/" + id).set(doc).then(function () { cerrar($("dlg-ruta")); })
+    S.db.doc("rutas/" + id).set(doc).then(function () { cerrar($("dlg-ruta")); return recargar(); })
       .catch(function (x) { falla(errorDb(x)); }).finally(function () { b.disabled = false; });
   });
 
   function quitarRuta(id) {
     if (S.porQuitar !== id) { S.porQuitar = id; pintarRutas(); return; }
     S.porQuitar = null;
-    S.db.doc("rutas/" + id).delete().catch(function (x) { aviso("aviso-global", errorDb(x), "error"); });
+    S.db.doc("rutas/" + id).delete().then(recargar).catch(function (x) { aviso("aviso-global", errorDb(x), "error"); });
   }
 
   $("btn-tercera").addEventListener("click", function () {
@@ -604,7 +604,7 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
     if (!/^[A-Z]{3}$/.test(c)) { err.textContent = "Escribe un código de 3 letras, por ejemplo COP."; err.hidden = false; return; }
     if (c === "USD" || c === "EUR") { err.textContent = "USD y EUR ya están en el selector."; err.hidden = false; return; }
     S.db.doc("config/monedas").set({ codigo: c }).then(function () {
-      S.moneda = c; guardar("radar.moneda", c); cerrar($("dlg-moneda"));
+      S.moneda = c; guardar("radar.moneda", c); cerrar($("dlg-moneda")); recargar();
     }).catch(function (x) { err.textContent = errorDb(x); err.hidden = false; });
   });
 
@@ -778,35 +778,63 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
       var permiso = code === "not_in_manifest" || code === "consent_required";
       aviso("aviso-consulta", esc(m), "error", permiso ? "Abrir permisos" : null);
     }).finally(function () {
-      S.consultando = false; progreso(""); pintarVuelos();
+      S.consultando = false; progreso(""); pintarVuelos(); recargar();
     });
   });
 
   // ---------- Base de datos ----------
+  function aplicarRutas(docs) {
+    S.rutas = docs.map(function (d) { var x = JSON.parse(JSON.stringify(d.data() || {})); x.id = x.id || d.id; return x; })
+      .sort(function (a, b) { return String(a.creado || "") < String(b.creado || "") ? -1 : 1; });
+    S.dbListo = true; pintarRutas(); pintarVuelos();
+  }
+  function aplicarVuelos(docs) {
+    S.vuelos = docs.map(function (d) { var x = d.data() || {}; x = JSON.parse(JSON.stringify(x)); x.id = x.id || d.id; return x; });
+    pintarVuelos();
+  }
+  function aplicarTasas(docs) {
+    S.tasas = docs.map(function (d) { var x = JSON.parse(JSON.stringify(d.data() || {})); x.fecha = x.fecha || d.id; return x; })
+      .filter(function (x) { return x.rates; })
+      .sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; });
+    pintarVuelos();
+  }
+  function aplicarMoneda(snap) {
+    var c = snap && snap.exists ? String((snap.data() || {}).codigo || "").toUpperCase() : "";
+    S.tercera = /^[A-Z]{3}$/.test(c) && c !== "USD" && c !== "EUR" ? c : null;
+    pintarMonedas(); pintarVuelos();
+  }
+  function falloLectura(e) {
+    var c = (e && e.code) || "desconocido";
+    if (c === "revoked") return aviso("aviso-global", "Esta vista perdió el acceso a los datos del radar. Recarga la página.", "error");
+    if (!S.dbListo) aviso("aviso-global", "No se pudieron leer tus datos (" + esc(c) + "). Recarga la página; si sigue igual, ábrelo desde claude.ai/artifacts.", "error");
+  }
+  // Lectura directa: al abrir, después de cada cambio y cada 30 s. Complementa la lectura en vivo.
+  var leyendo = false;
+  function recargar() {
+    if (!S.db || leyendo) return Promise.resolve();
+    leyendo = true;
+    var db = S.db;
+    return Promise.all([
+      db.collection("rutas").get().then(function (q) { aplicarRutas(q.docs); }),
+      db.collection("vuelos").limit(1000).get().then(function (q) { aplicarVuelos(q.docs); }),
+      db.collection("tasas").get().then(function (q) { aplicarTasas(q.docs); }),
+      db.doc("config/monedas").get().then(aplicarMoneda)
+    ]).then(function () {
+      var g = $("aviso-global"); if (!g.hidden && /leer tus datos/.test(g.textContent)) aviso("aviso-global", "");
+    }).catch(falloLectura).finally(function () { leyendo = false; });
+  }
   function suscribir(db) {
-    function caida(e) {
-      if (e && e.code === "revoked") aviso("aviso-global", "Esta vista perdió el acceso a los datos del radar. Recarga la página.", "error");
+    function vivo(q, fn) {
+      try { q.onSnapshot(function (snap) { if (!snap.metadata || !snap.metadata.fromCache || snap.size) fn(snap); }, function (e) { falloLectura(e); }); }
+      catch (e) { falloLectura(e); }
     }
-    db.collection("rutas").onSnapshot(function (snap) {
-      S.rutas = snap.docs.map(function (d) { var x = d.data(); x.id = x.id || d.id; return x; })
-        .sort(function (a, b) { return String(a.creado || "") < String(b.creado || "") ? -1 : 1; });
-      S.dbListo = true; pintarRutas(); pintarVuelos();
-    }, caida);
-    db.collection("vuelos").limit(1000).onSnapshot(function (snap) {
-      S.vuelos = snap.docs.map(function (d) { var x = d.data(); x.id = x.id || d.id; return x; });
-      pintarVuelos();
-    }, caida);
-    db.collection("tasas").onSnapshot(function (snap) {
-      S.tasas = snap.docs.map(function (d) { var x = d.data(); x.fecha = x.fecha || d.id; return x; })
-        .filter(function (x) { return x.rates; })
-        .sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; });
-      pintarVuelos();
-    }, caida);
-    db.doc("config/monedas").onSnapshot(function (snap) {
-      var c = snap.exists ? String((snap.data() || {}).codigo || "").toUpperCase() : "";
-      S.tercera = /^[A-Z]{3}$/.test(c) && c !== "USD" && c !== "EUR" ? c : null;
-      pintarMonedas(); pintarVuelos();
-    }, caida);
+    vivo(db.collection("rutas"), function (q) { aplicarRutas(q.docs); });
+    vivo(db.collection("vuelos").limit(1000), function (q) { aplicarVuelos(q.docs); });
+    vivo(db.collection("tasas"), function (q) { aplicarTasas(q.docs); });
+    vivo(db.doc("config/monedas"), aplicarMoneda);
+    recargar();
+    setInterval(function () { if (!document.hidden) recargar(); }, 30000);
+    document.addEventListener("visibilitychange", function () { if (!document.hidden) recargar(); });
   }
 
   pintar();
