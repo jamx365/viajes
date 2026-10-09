@@ -184,7 +184,7 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
 
   <details class="card ayuda" id="ayuda">
     <summary>Cómo funciona</summary>
-    <p>Cada recorrido es un trayecto solo de ida; para el regreso agregas el recorrido al revés. Todos los días a las 19 (hora de Murcia) el radar consulta Expedia para cada recorrido en seis fechas repartidas en los próximos 90 días: a 7, 21, 35, 49, 63 y 77 días de hoy. De todas las opciones que encuentra guarda la más barata; si ese mismo vuelo ya estaba en la lista, le agrega el precio del día a su historial y actualiza el precio actual. Con todas las opciones vistas calcula el precio promedio del día para la ruta, y así sabes si un vuelo está más barato o más caro de lo normal. En la misma consulta se actualizan las tasas de cambio que usa el selector de moneda; los precios antiguos se convierten con la tasa de su día. Si eliges ida y vuelta con fechas flexibles, el radar crea los dos recorridos con sus propias fechas, guarda el más barato de cada fecha buscada y te muestra arriba la combinación de ida y vuelta más barata que respeta el mínimo de días. También puedes lanzar la consulta tú mismo con «Consultar ahora». El radar compara precios pero no reserva: para comprar, busca el vuelo en Expedia.</p>
+    <p>Cada recorrido es un trayecto solo de ida; para el regreso agregas el recorrido al revés. Todos los días a las 19 (hora de Murcia) el radar consulta Expedia para cada recorrido en seis fechas repartidas en los próximos 90 días: a 7, 21, 35, 49, 63 y 77 días de hoy. De todas las opciones que encuentra guarda la más barata; si ese mismo vuelo ya estaba en la lista, le agrega el precio del día a su historial y actualiza el precio actual. Con todas las opciones vistas calcula el precio promedio del día para la ruta, y así sabes si un vuelo está más barato o más caro de lo normal. En la misma consulta se actualizan las tasas de cambio que usa el selector de moneda; los precios antiguos se convierten con la tasa de su día. Si eliges ida y vuelta con fechas flexibles, el radar crea los dos recorridos con sus propias fechas, guarda el más barato de cada fecha buscada y te muestra arriba la combinación de ida y vuelta más barata que respeta el mínimo y el máximo de días. También puedes lanzar la consulta tú mismo con «Consultar ahora». El radar compara precios pero no reserva: para comprar, busca el vuelo en Expedia.</p>
   </details>
 </div>
 
@@ -219,7 +219,10 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
         <div class="campo"><label for="f-ini">Salida desde</label><input type="date" id="f-ini"></div>
         <div class="campo"><label for="f-fin">Vuelta hasta</label><input type="date" id="f-fin"></div>
       </div>
-      <div class="campo"><label for="f-min">Mínimo de días de viaje</label><input type="number" id="f-min" min="1" max="120" value="21" inputmode="numeric" class="num"></div>
+      <div class="fila">
+        <div class="campo"><label for="f-min">Mínimo de días</label><input type="number" id="f-min" min="1" max="120" value="21" inputmode="numeric" class="num"></div>
+        <div class="campo"><label for="f-max">Máximo de días</label><input type="number" id="f-max" min="1" max="120" value="30" inputmode="numeric" class="num"></div>
+      </div>
       <p class="ayudita" id="txt-rango"></p>
     </div>
     <p class="ayudita" id="txt-90">Cada recorrido es solo de ida. Para el regreso, agrega el recorrido al revés. Entra en la consulta de hoy a las 19</p>
@@ -395,7 +398,7 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
     var t = r.tipo === "directos" ? "solo directos" : r.tipo === "escalas" ? "solo con escalas, hasta " + esc_ : "directos o hasta " + esc_;
     var p = (r.pasajeros || 1) === 1 ? "1 pasajero" : r.pasajeros + " pasajeros";
     if (r.ventana && r.ventana.desde) {
-      var extra = r.viaje && r.viaje.minDias ? " · viaje de mín. " + r.viaje.minDias + " días" : "";
+      var extra = r.viaje && r.viaje.minDias ? " · viaje de " + r.viaje.minDias + (r.viaje.maxDias ? " a " + r.viaje.maxDias : " o más") + " días" : "";
       return t + " · " + p + " · salidas del " + corta(r.ventana.desde) + " al " + corta(r.ventana.hasta) + extra;
     }
     return t + " · " + p + " · solo ida";
@@ -567,7 +570,7 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
     if (!ids.length) { el.hidden = true; el.innerHTML = ""; return; }
     var rutas = {}; S.rutas.forEach(function (r) { rutas[r.id] = r; });
     el.innerHTML = ids.map(function (k) {
-      var vj = viajes[k], min = vj.minDias || 1;
+      var vj = viajes[k], min = vj.minDias || 1, max = vj.maxDias || 9999;
       var ri = rutas[vj.ida] || {}, rv = rutas[vj.vuelta] || {};
       var idas = lista.filter(function (v) { return v.rutaId === vj.ida; });
       var vueltas = lista.filter(function (v) { return v.rutaId === vj.vuelta; });
@@ -575,16 +578,17 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
       idas.forEach(function (a) {
         vueltas.forEach(function (b) {
           var d = diffDias(a.salida.fecha, b.salida.fecha);
-          if (d < min || (vj.hasta && b.salida.fecha > vj.hasta)) return;
+          if (d < min || d > max || (vj.hasta && b.salida.fecha > vj.hasta)) return;
           var t = precioMostradoUSD(a) + precioMostradoUSD(b);
           if (!mejor || t < mejor.t) mejor = { a: a, b: b, t: t, d: d };
         });
       });
       var titulo = esc(nombre(ri.origen || "")) + " ⇄ " + esc(nombre(ri.destino || ""));
-      var cab = '<p class="mini c">Mejor viaje de ida y vuelta · mínimo ' + esc(min) + " días</p>";
+      var rangoD = vj.maxDias ? "de " + min + " a " + vj.maxDias + " días" : "mínimo " + min + " días";
+      var cab = '<p class="mini c">Mejor viaje de ida y vuelta · ' + esc(rangoD) + "</p>";
       if (!mejor) {
         return '<div class="card combo">' + cab + '<div class="combo-top"><div><b>' + titulo + '</b><span class="gris">Salida desde el ' + esc(corta(vj.desde)) + ", vuelta hasta el " + esc(corta(vj.hasta)) + "</span></div></div>" +
-          '<p class="ayudita">Todavía no hay una ida y una vuelta separadas por ' + esc(min) + " días o más. Aparecerá cuando la consulta encuentre vuelos en las dos direcciones.</p></div>";
+          '<p class="ayudita">Todavía no hay una ida y una vuelta separadas por ' + esc(rangoD) + ". Aparecerá cuando la consulta encuentre vuelos en las dos direcciones.</p></div>";
       }
       var tot = conv(mejor.t), pax = mejor.a.pasajeros || 1;
       function fila(etq, v) {
@@ -663,10 +667,10 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
     var ini = $("f-ini").value, fin = $("f-fin").value, min = parseInt($("f-min").value, 10) || 0;
     var o = nombre($("f-desde").value.trim()) || "Origen", d = nombre($("f-hasta").value.trim()) || "Destino";
     $("txt-rango").textContent = ini && fin && min && diffDias(ini, fin) >= min
-      ? "Se crean dos recorridos: " + o + " → " + d + " con salidas del " + corta(ini) + " al " + corta(sumarDias(fin, -min)) + ", y " + d + " → " + o + " con salidas del " + corta(sumarDias(ini, min)) + " al " + corta(fin) + ". Arriba de la lista verás la combinación más barata de al menos " + min + " días."
-      : "Elige la primera fecha de salida, la última fecha de vuelta y el mínimo de días que quieres quedarte.";
+      ? "Se crean dos recorridos: " + o + " → " + d + " con salidas del " + corta(ini) + " al " + corta(sumarDias(fin, -min)) + ", y " + d + " → " + o + " con salidas del " + corta(sumarDias(ini, min)) + " al " + corta(fin) + ". Arriba de la lista verás la combinación más barata de " + min + " a " + (parseInt($("f-max").value, 10) || min) + " días."
+      : "Elige la primera fecha de salida, la última fecha de vuelta y cuántos días quieres quedarte.";
   }
-  ["f-fechas", "f-ini", "f-fin", "f-min", "f-desde", "f-hasta"].forEach(function (k) { $(k).addEventListener("input", syncFechas); $(k).addEventListener("change", syncFechas); });
+  ["f-fechas", "f-ini", "f-fin", "f-min", "f-max", "f-desde", "f-hasta"].forEach(function (k) { $(k).addEventListener("input", syncFechas); $(k).addEventListener("change", syncFechas); });
 
   $("form-ruta").addEventListener("submit", function (e) {
     e.preventDefault();
@@ -690,16 +694,17 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
 
   // Ida y vuelta flexible: dos recorridos solo de ida con su ventana de fechas, unidos por un viaje.
   function guardarViaje(o, d, tipo, maxEsc, pax, falla) {
-    var ini = $("f-ini").value, fin = $("f-fin").value, min = parseInt($("f-min").value, 10);
+    var ini = $("f-ini").value, fin = $("f-fin").value, min = parseInt($("f-min").value, 10), max = parseInt($("f-max").value, 10);
     var h = hoy();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(ini) || !/^\d{4}-\d{2}-\d{2}$/.test(fin)) return falla("Elige la fecha de salida y la de vuelta.");
     if (!(min >= 1 && min <= 120)) return falla("El mínimo de días debe estar entre 1 y 120.");
+    if (!(max >= min && max <= 120)) return falla("El máximo de días debe ser igual o mayor que el mínimo.");
     if (fin <= h) return falla("La fecha de vuelta ya pasó.");
     if (diffDias(ini, fin) < min) return falla("Entre la salida y la vuelta debe haber al menos " + min + " días.");
     var idIda = idRuta(o, d), idVta = idRuta(d, o);
     var existentes = S.rutas.filter(function (r) { return r.id === idIda || r.id === idVta; });
     if (S.rutas.length - existentes.length + 2 > MAX_RUTAS) return falla("No caben dos recorridos más: ya tienes " + S.rutas.length + " de 6.");
-    var viaje = { id: limpioId(idIda + "__" + ini), ida: idIda, vuelta: idVta, desde: ini, hasta: fin, minDias: min };
+    var viaje = { id: limpioId(idIda + "__" + ini), ida: idIda, vuelta: idVta, desde: ini, hasta: fin, minDias: min, maxDias: max };
     var ahora = new Date().toISOString();
     function doc(id, de, a, ventana) {
       var prev = S.rutas.filter(function (r) { return r.id === id; })[0] || {};
