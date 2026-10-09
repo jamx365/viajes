@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Artifact",
+      "ArtifactData",
+      "PushNotification",
+      "Bash(date:*)",
+      "WebFetch(domain:open.er-api.com)",
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "mcp__Expedia__search_flights",
+      "mcp__Gmail__send_message"
+    ]
+  }
+}
