@@ -263,6 +263,7 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
   function larga(f) { return f ? limpiarPunto(fmtLarga.format(new Date(f + "T12:00:00Z"))) : "—"; }
   function revision(iso) {
     if (!iso) return "—";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(iso))) return corta(String(iso));
     var d = new Date(iso);
     if (isNaN(d)) return corta(String(iso).slice(0, 10));
     var p = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
@@ -383,7 +384,7 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
   }
 
   function cambioDia(v) {
-    var h = v.historial || [];
+    var h = conPrecio(v.historial);
     var hoyF = hoy();
     if (h.length <= 1 && v.primeraVez === hoyF) return '<span class="etiqueta">nuevo hoy</span>';
     if (h.length < 2) return "";
@@ -397,7 +398,7 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
   }
 
   function grafica(v, ruta) {
-    var h = (v.historial || []).slice().sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; });
+    var h = conPrecio(v.historial).sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; });
     var pts = h.map(function (p) { return { f: p.fecha, y: conv(p.precio, p.fecha) }; }).filter(function (p) { return p.y != null; });
     if (!pts.length) return '<p class="nota">sin tasa para ' + esc(S.moneda) + "</p>";
     var prom = ruta && ruta.promedio ? conv(ruta.promedio.valor, ruta.promedio.fecha) : null;
@@ -438,7 +439,8 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
     var m = v.maleta || {};
     var bagUSD = costoMaletaUSD(v);
     var notaBag = bagUSD === null ? ' <span class="baja">(sin tasa para ' + esc(m.moneda) + ")</span>" : "";
-    var h = (v.historial || []).slice().sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; });
+    var hTodo = (v.historial || []).slice().sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; });
+    var h = conPrecio(hTodo);
     var mejor = h.reduce(function (acc, p) { return !acc || p.precio < acc.precio ? p : acc; }, null);
     var prom = ruta && ruta.promedio;
     var actual = conv(Number(v.precioActual)), promC = prom ? conv(prom.valor, prom.fecha) : null;
@@ -463,10 +465,12 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
     html += '<div><p class="mini c">Vuelos</p><div class="tramos">' + (v.tramosIda || []).map(function (t) {
       return '<div class="tramo"><span class="num">' + esc(t.vuelo) + '</span><span class="num">' + esc(t.de) + " → " + esc(t.a) + "</span></div>";
     }).join("") + "</div></div>";
-    var filas = h.slice().reverse().map(function (p, i, arr) {
-      var c = conv(p.precio, p.fecha), prev = arr[i + 1], var_ = "—", cls = "igual";
+    var filas = hTodo.slice().reverse().map(function (p, i, arr) {
+      if (p.precio == null) return "<tr><td>" + esc(corta(p.fecha)) + '</td><td>no disponible</td><td class="igual">—</td></tr>';
+      var prev = conPrecio(arr.slice(i + 1))[0];
+      var c = conv(Number(p.precio), p.fecha), var_ = "—", cls = "igual";
       if (prev) {
-        var cp = conv(prev.precio, prev.fecha);
+        var cp = conv(Number(prev.precio), prev.fecha);
         if (c != null && cp != null) {
           var q = pct(c, cp);
           if (Math.abs(q) >= 0.05) { cls = q > 0 ? "sube" : "baja"; var_ = (q > 0 ? "+" : "−") + fmtPct(q); } else var_ = "0 %";
@@ -477,6 +481,8 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
     html += '<div><p class="mini">Precios registrados</p><div class="tabla-wrap"><table><thead><tr><th>Fecha</th><th>Precio</th><th>Variación</th></tr></thead><tbody>' + filas + "</tbody></table></div></div>";
     return html;
   }
+  function aerolineas(v) { var a = v.aerolineas; return (Array.isArray(a) ? a.join(" + ") : String(a || "")) || "Aerolínea"; }
+  function conPrecio(h) { return (h || []).filter(function (p) { return p && p.precio != null && !isNaN(Number(p.precio)); }); }
   function dato(t, v) { return "<div><dt>" + esc(t) + "</dt><dd>" + v + "</dd></div>"; }
 
   function pintarVuelos() {
@@ -501,7 +507,7 @@ details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-wi
       var linea = "Salida " + esc(dia(s.fecha)) + ' · <span class="num">' + esc(h24(s.hora)) + "</span> (hora " + esc(orig) + ') → <span class="num">' + esc(h24(l.hora)) + "</span> del " + esc(dia(l.fecha)) + " (hora " + esc(dest) + ') · <span class="num">' + esc(v.duracion || "—") + "</span> de viaje";
       return '<article class="card vuelo' + (abierto ? " abierto" : "") + '">' +
         '<button type="button" class="v-head" data-abrir="' + esc(v.id) + '" aria-expanded="' + abierto + '">' +
-        '<div class="v-top"><div class="v-left"><b>' + esc((v.aerolineas || []).join(" + ") || "Aerolínea") + ' <span class="chev" aria-hidden="true">▾</span></b><span class="gris">' + esc(orig) + " → " + esc(dest) + "</span></div>" +
+        '<div class="v-top"><div class="v-left"><b>' + esc(aerolineas(v)) + ' <span class="chev" aria-hidden="true">▾</span></b><span class="gris">' + esc(orig) + " → " + esc(dest) + "</span></div>" +
         '<div class="v-right"><span class="precio">' + esc(dinero(total)) + '</span><span class="pp">' + esc(total == null ? "" : dinero(total / pax) + " por persona") + "</span>" + cambioDia(v) + "</div></div>" +
         '<div class="v-linea">' + linea + "</div></button>" +
         '<div class="v-body"' + (abierto ? "" : " hidden") + ">" + (abierto ? cuerpo(v, ruta) : "") + "</div></article>";
