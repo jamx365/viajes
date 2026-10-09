@@ -121,10 +121,9 @@ details.ayuda summary { cursor: pointer; font-weight: 600; }
 details.ayuda p { margin: 10px 0 0; color: var(--muted); font-size: 14px; max-width: 65ch; }
 
 /* Ventanas */
-dialog { border: 1px solid var(--line); border-radius: 16px; background: var(--card); color: var(--fg); padding: 0; width: min(440px, calc(100vw - 32px)); }
-dialog::backdrop { background: rgba(8, 18, 20, .45); }
-dialog form { padding: 18px; display: flex; flex-direction: column; gap: 12px; }
-dialog h2 { margin: 0; font-size: 18px; }
+.modal { position: fixed; inset: 0; z-index: 50; background: rgba(8, 18, 20, .5); display: flex; align-items: center; justify-content: center; padding: calc(16px + env(safe-area-inset-top, 0px)) 16px calc(16px + env(safe-area-inset-bottom, 0px)); overflow-y: auto; }
+.modal form { width: 100%; max-width: 440px; max-height: 100%; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 12px; border-radius: 16px; margin: auto; }
+.modal h2 { margin: 0; font-size: 18px; }
 .campo { display: flex; flex-direction: column; gap: 4px; }
 .campo label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .campo input, .campo select { font: inherit; font-size: 16px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--fg); width: 100%; }
@@ -175,9 +174,9 @@ dialog h2 { margin: 0; font-size: 18px; }
   </details>
 </div>
 
-<dialog id="dlg-ruta">
-  <form id="form-ruta" method="dialog" novalidate>
-    <h2>Agregar recorrido</h2>
+<div class="modal" id="dlg-ruta" role="dialog" aria-modal="true" aria-labelledby="t-ruta" hidden>
+  <form id="form-ruta" class="card" novalidate>
+    <h2 id="t-ruta">Agregar recorrido</h2>
     <div class="campo"><label for="f-desde">Desde</label><input id="f-desde" autocomplete="off" placeholder="Ciudad de salida, p. ej. Madrid" required></div>
     <div class="campo"><label for="f-hasta">Hasta</label><input id="f-hasta" autocomplete="off" placeholder="Ciudad de llegada, p. ej. Bogotá" required></div>
     <div class="campo"><label for="f-tipo">Vuelos</label>
@@ -202,10 +201,10 @@ dialog h2 { margin: 0; font-size: 18px; }
       <button class="btn" type="submit" id="btn-guardar-ruta">Agregar</button>
     </div>
   </form>
-</dialog>
+</div>
 
-<dialog id="dlg-moneda">
-  <form id="form-moneda" method="dialog" novalidate>
+<div class="modal" id="dlg-moneda" role="dialog" aria-modal="true" aria-labelledby="t-moneda" hidden>
+  <form id="form-moneda" class="card" novalidate>
     <h2 id="t-moneda">Tercera moneda</h2>
     <div class="campo"><label for="f-moneda">Código de 3 letras</label><input id="f-moneda" maxlength="3" autocomplete="off" autocapitalize="characters" placeholder="COP" class="num"></div>
     <p class="ayudita">Por ejemplo COP, MXN, ARS, CLP, PEN, BRL o GBP.</p>
@@ -215,7 +214,7 @@ dialog h2 { margin: 0; font-size: 18px; }
       <button class="btn" type="submit">Guardar</button>
     </div>
   </form>
-</dialog>
+</div>
 
 <script>
 (function () {
@@ -346,7 +345,6 @@ dialog h2 { margin: 0; font-size: 18px; }
       b.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2.5l2.5 2.5L5.5 13H3v-2.5z"/></svg>';
       b.setAttribute("aria-label", "Cambiar tercera moneda");
     } else { b.textContent = "+"; b.setAttribute("aria-label", "Agregar moneda"); }
-    b.disabled = !S.db;
   }
 
   function textoRuta(r) {
@@ -360,7 +358,7 @@ dialog h2 { margin: 0; font-size: 18px; }
     var n = S.rutas.length;
     $("subtitulo").textContent = "Busca todos los días a las 19 en " + n + " recorrido" + (n === 1 ? "" : "s") + " y guarda los vuelos más baratos que encuentra";
     var b = $("btn-agregar");
-    b.disabled = !S.db || n >= MAX_RUTAS;
+    b.disabled = n >= MAX_RUTAS;
     b.textContent = n >= MAX_RUTAS ? "6 de 6 recorridos" : "+ Agregar recorrido";
     if (!n) {
       $("rutas").innerHTML = '<div class="card vacio" style="grid-column:1/-1">' +
@@ -502,7 +500,7 @@ dialog h2 { margin: 0; font-size: 18px; }
       var linea = "Salida " + esc(dia(s.fecha)) + ' · <span class="num">' + esc(h24(s.hora)) + "</span> (hora " + esc(orig) + ') → <span class="num">' + esc(h24(l.hora)) + "</span> del " + esc(dia(l.fecha)) + " (hora " + esc(dest) + ') · <span class="num">' + esc(v.duracion || "—") + "</span> de viaje";
       return '<article class="card vuelo' + (abierto ? " abierto" : "") + '">' +
         '<button type="button" class="v-head" data-abrir="' + esc(v.id) + '" aria-expanded="' + abierto + '">' +
-        '<div class="v-top"><div class="v-left"><b>' + esc((v.aerolineas || []).join(" + ") || "Aerolínea") + ' <span class="chev" aria-hidden="true">▾</span></b><span class="gris">' + esc(orig) + " → " + esc(dest) + "</span></div>' +
+        '<div class="v-top"><div class="v-left"><b>' + esc((v.aerolineas || []).join(" + ") || "Aerolínea") + ' <span class="chev" aria-hidden="true">▾</span></b><span class="gris">' + esc(orig) + " → " + esc(dest) + "</span></div>" +
         '<div class="v-right"><span class="precio">' + esc(dinero(total)) + '</span><span class="pp">' + esc(total == null ? "" : dinero(total / pax) + " por persona") + "</span>" + cambioDia(v) + "</div></div>" +
         '<div class="v-linea">' + linea + "</div></button>" +
         '<div class="v-body"' + (abierto ? "" : " hidden") + ">" + (abierto ? cuerpo(v, ruta) : "") + "</div></article>";
@@ -532,7 +530,7 @@ dialog h2 { margin: 0; font-size: 18px; }
     } else if (t.dataset.quitar) {
       quitarRuta(t.dataset.quitar);
     } else if (t.hasAttribute("data-cerrar")) {
-      t.closest("dialog").close();
+      cerrar(t.closest(".modal"));
     } else if (t.hasAttribute("data-permisos")) {
       usar("permissions").then(function (p) { if (p && p.manage) return p.manage(); }).catch(function () {
         aviso("aviso-consulta", "Abre el menú del artefacto y entra en <b>Permisos</b> para dar acceso a Expedia.", "error");
@@ -545,10 +543,25 @@ dialog h2 { margin: 0; font-size: 18px; }
     }
   });
 
+  function abrir(el, foco) { el.hidden = false; document.body.style.overflow = "hidden"; setTimeout(function () { try { foco.focus(); } catch (e) {} }, 30); }
+  function cerrar(el) { if (!el) return; el.hidden = true; document.body.style.overflow = ""; }
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") document.querySelectorAll(".modal").forEach(function (m) { if (!m.hidden) cerrar(m); });
+  });
+  document.querySelectorAll(".modal").forEach(function (m) {
+    m.addEventListener("click", function (e) { if (e.target === m) cerrar(m); });
+  });
+  function sinDatos() {
+    aviso("aviso-global", S.dbListo
+      ? "No se pudieron cargar tus datos, así que no se puede guardar. Abre el radar desde claude.ai o la app de Claude con tu sesión iniciada y recarga la página."
+      : "Todavía se están cargando tus datos. Espera unos segundos y vuelve a tocar el botón.", "error");
+  }
+
   $("btn-agregar").addEventListener("click", function () {
-    if (!S.db || S.rutas.length >= MAX_RUTAS) return;
+    if (!S.db) return sinDatos();
+    if (S.rutas.length >= MAX_RUTAS) return;
     $("form-ruta").reset(); $("err-ruta").hidden = true; syncEscalas();
-    $("dlg-ruta").showModal(); $("f-desde").focus();
+    abrir($("dlg-ruta"), $("f-desde"));
   });
   function syncEscalas() { $("f-escalas").disabled = $("f-tipo").value === "directos"; }
   $("f-tipo").addEventListener("change", syncEscalas);
@@ -567,7 +580,7 @@ dialog h2 { margin: 0; font-size: 18px; }
     var doc = { id: id, origen: o, destino: d, tipo: $("f-tipo").value, maxEscalas: Number($("f-escalas").value), pasajeros: Number($("f-pax").value), creado: new Date().toISOString(), promedio: null, promedios: [] };
     if (doc.tipo === "directos") doc.maxEscalas = 0;
     var b = $("btn-guardar-ruta"); b.disabled = true;
-    S.db.doc("rutas/" + id).set(doc).then(function () { $("dlg-ruta").close(); })
+    S.db.doc("rutas/" + id).set(doc).then(function () { cerrar($("dlg-ruta")); })
       .catch(function (x) { falla(errorDb(x)); }).finally(function () { b.disabled = false; });
   });
 
@@ -578,10 +591,10 @@ dialog h2 { margin: 0; font-size: 18px; }
   }
 
   $("btn-tercera").addEventListener("click", function () {
-    if (!S.db) return;
+    if (!S.db) return sinDatos();
     $("t-moneda").textContent = S.tercera ? "Cambiar tercera moneda" : "Tercera moneda";
     $("f-moneda").value = S.tercera || ""; $("err-moneda").hidden = true;
-    $("dlg-moneda").showModal(); $("f-moneda").focus();
+    abrir($("dlg-moneda"), $("f-moneda"));
   });
   $("f-moneda").addEventListener("input", function () { this.value = this.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3); });
   $("form-moneda").addEventListener("submit", function (e) {
@@ -590,7 +603,7 @@ dialog h2 { margin: 0; font-size: 18px; }
     if (!/^[A-Z]{3}$/.test(c)) { err.textContent = "Escribe un código de 3 letras, por ejemplo COP."; err.hidden = false; return; }
     if (c === "USD" || c === "EUR") { err.textContent = "USD y EUR ya están en el selector."; err.hidden = false; return; }
     S.db.doc("config/monedas").set({ codigo: c }).then(function () {
-      S.moneda = c; guardar("radar.moneda", c); $("dlg-moneda").close();
+      S.moneda = c; guardar("radar.moneda", c); cerrar($("dlg-moneda"));
     }).catch(function (x) { err.textContent = errorDb(x); err.hidden = false; });
   });
 
